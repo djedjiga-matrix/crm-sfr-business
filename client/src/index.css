@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+
+  --color-background-start: #050507;
+  --color-background-mid: #08080a;
+  --color-background-end: #0a0505;
+
+  --color-neon-red: #ef4444;
+  --color-neon-red-glow: rgba(239, 68, 68, 0.5);
+  
+  --color-glass-bg: rgba(14, 14, 17, 0.4);
+  --color-glass-border: rgba(255, 255, 255, 0.05);
+  --color-glass-border-hover: rgba(255, 255, 255, 0.2);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply font-sans text-gray-900 dark:text-gray-300 antialiased min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-[#050507] dark:via-[#08080a] dark:to-[#0a0505] transition-colors duration-300;
+    touch-action: manipulation;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans tracking-tight text-gray-900 dark:text-white;
+  }
+
+  /* Scrollbar styling for Webkit browsers */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-[#050507];
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-white/80 dark:bg-[#0E0E11]/40 backdrop-blur-md border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-xl;
+  }
+  
+  .glass-card {
+    @apply bg-white dark:bg-[#0E0E11]/40 backdrop-blur-sm border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-lg transition-all duration-300 hover:border-red-200 dark:hover:border-white/20 hover:shadow-md dark:hover:shadow-[0_0_15px_rgba(255,255,255,0.05)];
+  }
+
+  .btn-primary {
+    @apply bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:shadow-[0_0_20px_rgba(220,38,38,0.6)] transition-all duration-200 active:scale-95 uppercase tracking-wide text-xs;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 font-medium py-2 px-4 rounded-lg border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 transition-all duration-200 active:scale-95 uppercase tracking-wide text-xs;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2 bg-white dark:bg-[#0E0E11]/60 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-gray-200 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 outline-none transition-all duration-200 placeholder:text-gray-400 dark:placeholder:text-gray-600;
+  }
+
+  .data-value {
+    @apply font-mono text-white tracking-tight;
+  }
+
+  .section-title {
+    @apply text-xs font-bold text-gray-500 uppercase tracking-widest mb-4;
+  }
+  
+  .neon-text {
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-400/50 dark:bg-white/10 rounded-full hover:bg-gray-400/80 dark:hover:bg-white/20;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+.clip-path-polygon {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+

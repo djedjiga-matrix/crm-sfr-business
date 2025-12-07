@@ -1,0 +1,578 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  COMMERCIAL
+  SUPERVISEUR
+}
+
+enum ContactStatus {
+  NEW
+  NRP
+  UNREACHABLE
+  ANSWERING_MACHINE
+  ABSENT
+  CALLBACK_LATER
+  FOLLOW_UP
+  NOT_INTERESTED
+  APPOINTMENT_TAKEN
+  OUT_OF_TARGET
+  ALREADY_CLIENT
+  WRONG_NUMBER
+}
+
+enum CallOutcome {
+  APPOINTMENT_TAKEN
+  UNREACHABLE
+  ANSWERING_MACHINE
+  CALLBACK_LATER
+  NOT_INTERESTED
+  BUSY
+  REFUSAL
+  WRONG_CONTACT
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED       // RDV à venir
+  TO_RESCHEDULE   // RDV à reprogrammer
+  TO_RECONTACT    // RDV à relancer
+  RESCHEDULED     // RDV décalé
+  SIGNED          // RDV signé
+  CANCELLED       // RDV annulé
+  TO_CALLBACK     // RDV à rappeler
+  CONFIRMED       // Legacy, map to SCHEDULED or keep for now
+  COMPLETED       // Legacy
+  NO_SHOW         // Legacy
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  username  String?  @unique
+  password  String
+  name      String   // Full name or display name
+  firstName String?
+  lastName  String?
+  phone     String?
+  
+  role      Role     @default(AGENT)
+  status    String   @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  
+  // Security
+  forcePasswordChange Boolean @default(true)
+  lastLogin           DateTime?
+
+  // Preferences
+  notifyEmail Boolean @default(true)
+  notifySms   Boolean @default(false)
+  notifyPush  Boolean @default(true)
+
+  // Agent Specific
+  quotaDaily      Int?
+  assignmentMode  String? // 'AUTO', 'MANUAL'
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  assignedContacts Contact[]     @relation("AssignedAgent")
+  calls            Call[]
+  appointments     Appointment[] @relation("CommercialAppointments")
+  bookedAppointments Appointment[] @relation("AgentBookedAppointments")
+  imports          ImportHistory[]
+  assignedDatabases ImportHistory[] @relation("DatabaseUsers")
+  campaigns        Campaign[]    @relation("CampaignUsers")
+  auditLogs        AuditLog[]
+  appointmentHistory AppointmentHistory[]
+
+  // Monitoring Relations
+  sessions        UserSession[]
+  pauses          UserPause[]
+  activities      UserActivity[]
+  dailyStats      DailyStats[]
+
+  // New Relations
+  zones           CommercialZone[]
+  assignments     UserAssignment[]
+  
+  // Supervision
+  supervisedTeams TeamMember[] @relation("Supervisor")
+  memberOfTeams   TeamMember[] @relation("TeamMember")
+
+  // Chat Relations
+  createdGroups   ChatGroup[]       @relation("CreatedGroups")
+  chatMemberships ChatGroupMember[]
+  sentMessages    ChatMessage[]
+  chatReactions   ChatReaction[]
+  chatReads       ChatMessageRead[]
+  pinnedMessages  ChatPinnedMessage[]
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       String   // CONNECTED_ACTIVE, CONNECTED_INACTIVE, PAUSED, ON_CALL, DISCONNECTED
+  loginTime    DateTime @default(now())
+  lastActivity DateTime @default(now())
+  logoutTime   DateTime?
+  ipAddress    String?
+  userAgent    String?
+  location     String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model UserPause {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // LUNCH, SHORT, BATHROOM, PHONE, MEDICAL, OTHER
+  startTime   DateTime @default(now())
+  endTime     DateTime?
+  duration    Int?     // in seconds
+  expectedDuration Int? // in minutes
+  reason      String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserActivity {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // LOGIN, LOGOUT, CALL_START, CALL_END, PAUSE_START, PAUSE_END
+  details   String?  // JSON string
+  timestamp DateTime @default(now())
+}
+
+model DailyStats {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date            DateTime @default(now())
+  workTime        Int      @default(0) // seconds
+  pauseTime       Int      @default(0) // seconds
+  pauseCount      Int      @default(0)
+  contactsTreated Int      @default(0)
+  callsMade       Int      @default(0)
+  appointmentsTaken Int    @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+model CommercialZone {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentCode String // e.g., "75", "92"
+  createdAt DateTime @default(now())
+}
+
+model UserAssignment {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  databaseId  String?
+  database    ImportHistory? @relation(fields: [databaseId], references: [id])
+  
+  assignedAt  DateTime @default(now())
+  active      Boolean  @default(true)
+}
+
+model TeamMember {
+  id           String   @id @default(uuid())
+  supervisorId String
+  supervisor   User     @relation("Supervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
+  memberId     String
+  member       User     @relation("TeamMember", fields: [memberId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime @default(now())
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  uniqueId  String?   @unique // QC-2025-XXXXXX
+  
+  // Informations entreprise
+  companyName String
+  sector      String?
+  address     String?
+  zipCode     String?
+  city        String?
+  region      String?
+  
+  // Coordonnées
+  phoneFixed  String?   @unique
+  phoneMobile String?
+  fax         String?
+  email       String?
+  website     String?
+  
+  // Responsable
+  civility    String?   // Mr, Mme
+  managerName String?
+  managerRole String?
+  
+  // Rappel
+  nextCallDate DateTime?
+
+  
+  // Infos légales
+  siret       String?
+  siren       String?
+  naf         String?
+  legalForm   String?
+  capital     String?
+  workforce   String?
+  creationDate DateTime?
+
+  // Statut et Suivi
+  status      ContactStatus @default(NEW)
+  notes       String?       @db.Text
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  assignedToId String?
+  assignedTo   User?    @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  
+  campaignId   String?
+  campaign     Campaign? @relation(fields: [campaignId], references: [id])
+
+  calls        Call[]
+  appointments Appointment[]
+  importId     String?
+  importHistory ImportHistory? @relation(fields: [importId], references: [id])
+}
+
+model Campaign {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  status      String    @default("ACTIVE") // ACTIVE, ARCHIVED, PAUSED
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  users       User[]    @relation("CampaignUsers")
+  contacts    Contact[]
+  
+  // New Relation
+  assignments UserAssignment[]
+}
+
+model Call {
+  id          String      @id @default(uuid())
+  contactId   String
+  contact     Contact     @relation(fields: [contactId], references: [id])
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  
+  outcome     CallOutcome
+  notes       String?     @db.Text
+  duration    Int?        // Durée en secondes
+  calledAt    DateTime    @default(now())
+  
+  // Pour les rappels
+  callbackDate DateTime?
+
+  // Aircall & Recording
+  aircallId       String?   @unique
+  recordingUrl    String?   // URL originale Aircall
+  recordingPath   String?   // Chemin local du fichier
+  recordingStatus String    @default("UNTREATED") // TREATED, UNTREATED
+  
+  // Renaming System
+  originalRecordingName String?
+  renamedAt             DateTime?
+
+  direction       String?   // inbound, outbound
+  phoneNumber     String?   // Snapshot du numéro
+  importedAt      DateTime?
+}
+
+model Appointment {
+  id           String            @id @default(uuid())
+  contactId    String
+  contact      Contact           @relation(fields: [contactId], references: [id])
+  
+  commercialId String
+  commercial   User              @relation("CommercialAppointments", fields: [commercialId], references: [id])
+  
+  agentId      String
+  agent        User              @relation("AgentBookedAppointments", fields: [agentId], references: [id])
+  
+  date         DateTime
+  address      String?           // Lieu du RDV si différent de l'entreprise
+  status       AppointmentStatus @default(SCHEDULED)
+  notes        String?           @db.Text
+  
+  // Suivi signature
+  contractValue Float?
+  offerType     String?
+  signedAt      DateTime?
+
+  // Raison changement/annulation
+  reason        String?          @db.Text
+
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  history      AppointmentHistory[]
+}
+
+model AppointmentHistory {
+  id            String      @id @default(uuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  action        String      // 'STATUS_CHANGE', 'EDIT', etc.
+  oldStatus     String?
+  newStatus     String?
+  comment       String?     @db.Text
+  createdAt     DateTime    @default(now())
+}
+
+model ImportHistory {
+  id        String   @id @default(uuid())
+  filename  String
+  name      String?  // Name given by the user to this import (database name)
+  isActive  Boolean  @default(true) // Whether this database is active (visible to agents)
+  status    String   // PENDING, PROCESSING, COMPLETED, FAILED
+  rowCount  Int      @default(0)
+  errorReport String? // JSON or text report of errors
+  createdAt DateTime @default(now())
+  
+  // Configuration du recyclage automatique
+  recycleEnabled      Boolean @default(true)  // Activer le recyclage
+  recycleNRP          Boolean @default(true)  // Recycler les NRP
+  recycleAnsweringMachine Boolean @default(true) // Recycler les répondeurs
+  recycleAbsent       Boolean @default(true)  // Recycler les absents
+  recycleUnreachable  Boolean @default(true)  // Recycler les injoignables
+  recycleDelayMinutes Int     @default(30)    // Délai avant recyclage (en minutes)
+  
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+
+  assignedUsers User[] @relation("DatabaseUsers")
+
+  contacts  Contact[]
+  
+  // New Relation
+  assignments UserAssignment[]
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String   // EXPORT, LOGIN, UPDATE_CONTACT, etc.
+  details   String?  // JSON string or text details (e.g., filters used, count)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+// --- Chat System Models ---
+
+enum ChatGroupType {
+  DIRECT
+  GROUP
+  CHANNEL
+  BROADCAST
+}
+
+enum ChatGroupPrivacy {
+  PUBLIC
+  PRIVATE
+  SECRET
+}
+
+enum ChatRole {
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum ChatMessageType {
+  TEXT
+  FILE
+  IMAGE
+  VOICE
+  SYSTEM
+}
+
+model ChatGroup {
+  id             String           @id @default(uuid())
+  name           String
+  type           ChatGroupType
+  description    String?          @db.Text
+  icon           String?
+  privacy        ChatGroupPrivacy @default(PRIVATE)
+  createdBy      String
+  creator        User             @relation("CreatedGroups", fields: [createdBy], references: [id])
+  createdAt      DateTime         @default(now())
+  archived       Boolean          @default(false)
+
+  members        ChatGroupMember[]
+  messages       ChatMessage[]
+  pinnedMessages ChatPinnedMessage[]
+}
+
+model ChatGroupMember {
+  id                    String    @id @default(uuid())
+  groupId               String
+  group                 ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                  ChatRole  @default(MEMBER)
+  joinedAt              DateTime  @default(now())
+  lastReadMessageId     String?
+  notificationsEnabled  Boolean   @default(true)
+
+  @@unique([groupId, userId])
+}
+
+model ChatMessage {
+  id              String            @id @default(uuid())
+  groupId         String
+  group           ChatGroup         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User              @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  parentMessageId String?
+  parentMessage   ChatMessage?      @relation("Thread", fields: [parentMessageId], references: [id])
+  replies         ChatMessage[]     @relation("Thread")
+  
+  content         String            @db.Text
+  type            ChatMessageType   @default(TEXT)
+  urgent          Boolean           @default(false)
+  edited          Boolean           @default(false)
+  deleted         Boolean           @default(false)
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  attachments     ChatAttachment[]
+  reactions       ChatReaction[]
+  reads           ChatMessageRead[]
+  pinnedIn        ChatPinnedMessage[]
+}
+
+model ChatAttachment {
+  id          String      @id @default(uuid())
+  messageId   String
+  message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  filename    String
+  filePath    String
+  fileSize    Int
+  mimeType    String?
+  uploadedAt  DateTime    @default(now())
+}
+
+model ChatReaction {
+  id        String      @id @default(uuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime    @default(now())
+
+  @@unique([messageId, userId, emoji])
+}
+
+model ChatMessageRead {
+  id        String      @id @default(uuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt    DateTime    @default(now())
+
+  @@unique([messageId, userId])
+}
+
+model ChatPinnedMessage {
+  id        String      @id @default(uuid())
+  groupId   String
+  group     ChatGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy  String
+  pinner    User        @relation(fields: [pinnedBy], references: [id], onDelete: Cascade)
+  pinnedAt  DateTime    @default(now())
+}
+
+// --- Call Scripts System (Admin Configurable) ---
+
+enum ScriptSectionType {
+  INTRO
+  PITCH
+  OBJECTION
+  CLOSING
+  INFO
+}
+
+model CallScript {
+  id          String              @id @default(uuid())
+  name        String              // e.g., "Premier appel", "Rappel client"
+  status      ContactStatus       // Which contact status this script applies to
+  isDefault   Boolean             @default(false) // Mark as default script for this status
+  isActive    Boolean             @default(true)
+  
+  sections    CallScriptSection[]
+  objections  CallScriptObjection[]
+  
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  
+  @@unique([status, isDefault])
+}
+
+model CallScriptSection {
+  id          String            @id @default(uuid())
+  scriptId    String
+  script      CallScript        @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  
+  title       String            // e.g., "👋 Introduction"
+  content     String            @db.Text
+  type        ScriptSectionType @default(INFO)
+  order       Int               @default(0)
+  
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model CallScriptObjection {
+  id          String      @id @default(uuid())
+  scriptId    String?
+  script      CallScript? @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  
+  objection   String      // The objection text
+  response    String      @db.Text // The suggested response
+  order       Int         @default(0)
+  isGlobal    Boolean     @default(false) // If true, applies to all scripts
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}

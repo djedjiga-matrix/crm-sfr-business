@@ -1,0 +1,302 @@
+# Routes Auth
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Connexion utilisateur
+      description: Authentifie un utilisateur et retourne un token JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        200:
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        401:
+          description: Identifiants invalides
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Trop de tentatives (rate limit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Profil utilisateur courant
+      description: Retourne les informations de l'utilisateur connecté
+      responses:
+        200:
+          description: Profil utilisateur
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        401:
+          description: Non authentifié
+
+# Routes Users
+  /users:
+    get:
+      tags:
+        - Users
+      summary: Liste des utilisateurs
+      description: Retourne la liste de tous les utilisateurs (Admin uniquement)
+      parameters:
+        - in: query
+          name: role
+          schema:
+            type: string
+            enum: [ADMIN, AGENT, COMMERCIAL, SUPERVISEUR]
+          description: Filtrer par rôle
+      responses:
+        200:
+          description: Liste des utilisateurs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      tags:
+        - Users
+      summary: Créer un utilisateur
+      description: Crée un nouvel utilisateur (Admin uniquement)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        201:
+          description: Utilisateur créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        400:
+          description: Données invalides
+
+# Routes Contacts
+  /contacts:
+    get:
+      tags:
+        - Contacts
+      summary: Liste des contacts
+      description: Retourne la liste paginée des contacts
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 25
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Recherche par nom, téléphone, email
+        - in: query
+          name: status
+          schema:
+            type: string
+          description: Filtrer par statut
+        - in: query
+          name: city
+          schema:
+            type: string
+          description: Filtrer par ville
+      responses:
+        200:
+          description: Liste des contacts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactsList'
+    post:
+      tags:
+        - Contacts
+      summary: Créer un contact
+      description: Crée un nouveau contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Contact'
+      responses:
+        201:
+          description: Contact créé
+
+  /contacts/{id}:
+    get:
+      tags:
+        - Contacts
+      summary: Détails d'un contact
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Détails du contact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        404:
+          description: Contact non trouvé
+    put:
+      tags:
+        - Contacts
+      summary: Modifier un contact
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Contact'
+      responses:
+        200:
+          description: Contact modifié
+    delete:
+      tags:
+        - Contacts
+      summary: Supprimer un contact
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Contact supprimé
+
+# Routes Appointments
+  /appointments:
+    get:
+      tags:
+        - Appointments
+      summary: Liste des rendez-vous
+      parameters:
+        - in: query
+          name: commercialId
+          schema:
+            type: string
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+      responses:
+        200:
+          description: Liste des rendez-vous
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+    post:
+      tags:
+        - Appointments
+      summary: Créer un rendez-vous
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointmentRequest'
+      responses:
+        201:
+          description: Rendez-vous créé
+
+# Routes Stats
+  /stats:
+    get:
+      tags:
+        - Stats
+      summary: Statistiques du dashboard
+      description: Retourne les KPIs et données de graphique
+      parameters:
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date-time
+      responses:
+        200:
+          description: Statistiques
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+# Routes Audit
+  /audit:
+    get:
+      tags:
+        - Audit
+      summary: Logs d'audit
+      description: Retourne les logs d'audit paginés (Admin uniquement)
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: action
+          schema:
+            type: string
+        - in: query
+          name: dateStart
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+            format: date
+      responses:
+        200:
+          description: Logs d'audit
