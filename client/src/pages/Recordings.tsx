@@ -138,7 +138,7 @@ const Recordings = () => {
             setIsPlaying(true);
             if (audioRef.current) {
                 const token = localStorage.getItem('token');
-                audioRef.current.src = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/recordings/${id}/stream?token=${token}`;
+                audioRef.current.src = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/recordings/${id}/stream?token=${token}`;
                 audioRef.current.play();
             }
         }
@@ -148,7 +148,7 @@ const Recordings = () => {
         try {
             const token = localStorage.getItem('token');
             const link = document.createElement('a');
-            link.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/recordings/${id}/stream?token=${token}`;
+            link.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/recordings/${id}/stream?token=${token}`;
             link.download = `${filename}.mp3`;
             document.body.appendChild(link);
             link.click();
