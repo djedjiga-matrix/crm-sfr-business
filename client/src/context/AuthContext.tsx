@@ -36,6 +36,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     const response = await api.get('/auth/me');
                     setUser(response.data);
                     setToken(storedToken);
+
+                    // Connecter le socket après authentification réussie
+                    socketService.connect();
                 } catch (error) {
                     console.error("Session expired or invalid", error);
                     logout();
@@ -46,6 +49,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         initAuth();
     }, []);
+
+    // Envoyer un heartbeat toutes les 30 secondes pour maintenir la session active
+    useEffect(() => {
+        if (!user) return;
+
+        // Envoyer un heartbeat immédiatement après connexion
+        socketService.sendHeartbeat(user.id);
+
+        const heartbeatInterval = setInterval(() => {
+            if (socketService.isConnected()) {
+                socketService.sendHeartbeat(user.id);
+                console.log('[Heartbeat] Sent for user', user.id);
+            } else {
+                // Tenter de reconnecter si déconnecté
+                socketService.connect();
+            }
+        }, 30000); // Toutes les 30 secondes
+
+        return () => {
+            clearInterval(heartbeatInterval);
+        };
+    }, [user]);
 
     const login = (newToken: string, newUser: User) => {
         localStorage.setItem('token', newToken);

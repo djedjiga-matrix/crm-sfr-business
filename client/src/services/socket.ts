@@ -16,10 +16,13 @@ class SocketService {
             return;
         }
 
-        const url = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000`;
+        // URL du serveur WebSocket (sans /api)
+        const socketUrl = import.meta.env.VITE_SOCKET_URL ||
+            import.meta.env.VITE_API_URL?.replace('/api', '') ||
+            `http://${window.location.hostname}:3000`;
 
         // Créer la connexion avec authentification
-        this.socket = io(url, {
+        this.socket = io(socketUrl, {
             auth: {
                 token: token
             },

@@ -91,12 +91,51 @@ export const initSocket = (httpServer: HttpServer) => {
         }
     }, 30000);
 
-    io.on('connection', (socket: AuthenticatedSocket) => {
+    io.on('connection', async (socket: AuthenticatedSocket) => {
         console.log(`[SOCKET] Client connected: ${socket.id} (User: ${socket.userId})`);
 
         // Joindre automatiquement la room de l'utilisateur
         if (socket.userId) {
             socket.join(socket.userId);
+
+            // Créer ou mettre à jour la session automatiquement à la connexion
+            try {
+                // Vérifier s'il existe déjà une session active
+                const existingSession = await prisma.userSession.findFirst({
+                    where: { userId: socket.userId, logoutTime: null }
+                });
+
+                if (existingSession) {
+                    // Mettre à jour la session existante
+                    await prisma.userSession.update({
+                        where: { id: existingSession.id },
+                        data: {
+                            lastActivity: new Date(),
+                            status: 'CONNECTED_ACTIVE'
+                        }
+                    });
+                    console.log(`[SOCKET] Session updated for user ${socket.userId}`);
+                } else {
+                    // Créer une nouvelle session
+                    await prisma.userSession.create({
+                        data: {
+                            userId: socket.userId,
+                            status: 'CONNECTED_ACTIVE',
+                            ipAddress: socket.handshake.address,
+                            lastActivity: new Date()
+                        }
+                    });
+                    console.log(`[SOCKET] New session created for user ${socket.userId}`);
+                }
+
+                // Notifier les autres clients de la connexion
+                io.emit('user_status_update', {
+                    userId: socket.userId,
+                    status: 'CONNECTED_ACTIVE'
+                });
+            } catch (error) {
+                console.error('[SOCKET] Error creating session:', error);
+            }
         }
 
         socket.on('join_monitoring', () => {
