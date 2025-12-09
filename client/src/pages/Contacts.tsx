@@ -18,28 +18,36 @@ import {
     ChevronLeft,
     ChevronRight,
     Calendar,
-    Trash2
+    Trash2,
+    LayoutGrid,
+    Table as TableIcon
 } from 'lucide-react';
 import ContactModal from '../components/ContactModal';
 import ExportModal from '../components/ExportModal';
 import AppointmentModal from '../components/AppointmentModal';
 import CallbackModal from '../components/CallbackModal';
 import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
+import ImportMappingModal from '../components/ImportMappingModal';
 import { useAuth } from '../context/AuthContext';
 
 interface Contact {
     id: string;
+    uniqueId?: string;
     companyName: string;
     siret?: string;
     email?: string;
     phoneFixed?: string;
     phoneMobile?: string;
     address?: string;
+    zipCode?: string;
     city?: string;
     status: string;
     civility?: string;
     managerName?: string;
     managerRole?: string;
+    sector?: string;
+    workforce?: string;
+    creationDate?: string;
     nextCallDate?: string;
     updatedAt?: string;
 }
@@ -77,6 +85,62 @@ const ANCIENNETE_OPTIONS = [
     { value: 'custom', label: 'Période personnalisée' },
 ];
 
+// Fonctions de formatage pour l'affichage
+const formatPhoneNumber = (phone: string | null | undefined): string => {
+    if (!phone) return '-';
+    const cleaned = phone.replace(/\D/g, '');
+    return cleaned.replace(/(\d{2})(?=\d)/g, '$1 ').trim();
+};
+
+const formatSiret = (siret: string | null | undefined): string => {
+    if (!siret) return '-';
+    const cleaned = siret.replace(/\D/g, '');
+    if (cleaned.length < 9) return siret;
+    return `${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6, 9)} ${cleaned.slice(9)}`.trim();
+};
+
+const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('fr-FR');
+};
+
+const formatValue = (key: string, value: any): string => {
+    if (value === null || value === undefined || value === '') return '-';
+
+    switch (key) {
+        case 'phoneFixed':
+        case 'phoneMobile':
+            return formatPhoneNumber(value);
+        case 'siret':
+            return formatSiret(value);
+        case 'creationDate':
+            return formatDate(value);
+        case 'workforce':
+            return String(value);
+        default:
+            return String(value);
+    }
+};
+
+// Colonnes pour l'affichage en tableau
+const TABLE_COLUMNS = [
+    { key: 'uniqueId', header: 'ID Fiche', width: '100px' },
+    { key: 'companyName', header: 'Nom', width: '180px' },
+    { key: 'address', header: 'Adresse', width: '200px' },
+    { key: 'zipCode', header: 'CP', width: '70px' },
+    { key: 'city', header: 'Ville', width: '100px' },
+    { key: 'phoneFixed', header: 'Téléphone', width: '120px' },
+    { key: 'phoneMobile', header: 'Mobile', width: '120px' },
+    { key: 'email', header: 'Email', width: '180px' },
+    { key: 'sector', header: 'Catégorie', width: '120px' },
+    { key: 'siret', header: 'SIRET', width: '150px' },
+    { key: 'workforce', header: 'Effectif', width: '80px' },
+    { key: 'managerName', header: 'Dirigeants', width: '130px' },
+    { key: 'creationDate', header: 'Date Création', width: '110px' },
+];
+
 const PipelineBar = ({ step }: { step: number }) => (
     <div className="flex gap-1 mt-2">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -97,7 +161,7 @@ const Contacts = () => {
     const [contacts, setContacts] = useState<Contact[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [uploading, setUploading] = useState(false);
+    const [isImportMappingModalOpen, setIsImportMappingModalOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -111,6 +175,7 @@ const Contacts = () => {
     const navigate = useNavigate();
     const [notifications, setNotifications] = useState<Contact[]>([]);
     const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+    const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
     // Pagination State
     const [page, setPage] = useState(1);
@@ -253,49 +318,6 @@ const Contacts = () => {
             console.error('Error fetching contacts:', error);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (!selectedCampaignId && user?.role === 'ADMIN') {
-            alert('Veuillez sélectionner une campagne avant d\'importer.');
-            event.target.value = '';
-            return;
-        }
-
-        const dbName = prompt("Donnez un nom à cette base de données (ex: Fichier Lyon Octobre) :", file.name);
-        if (dbName === null) {
-            event.target.value = '';
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('name', dbName || file.name);
-        if (selectedCampaignId) {
-            formData.append('campaignId', selectedCampaignId);
-        }
-
-        setUploading(true);
-        try {
-            const response = await api.post('/contacts/import', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
-
-            const { success, errorCount } = response.data;
-            alert(`Import terminé !\n${success} contacts créés.\n${errorCount} erreurs.`);
-            fetchContacts();
-        } catch (error) {
-            console.error('Error uploading file:', error);
-            alert("Erreur lors de l'import");
-        } finally {
-            setUploading(false);
-            event.target.value = '';
         }
     };
 
@@ -461,17 +483,17 @@ const Contacts = () => {
                             </select>
                         </div>
                     )}
-
-                    <label className={`cursor-pointer text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors ${uploading ? 'opacity-50' : ''}`}>
-                        <FileSpreadsheet size={20} />
-                        <input
-                            type="file"
-                            accept=".csv, .xls, .xlsx"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                            disabled={uploading}
-                        />
-                    </label>
+                    {/* Import buttons */}
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setIsImportMappingModalOpen(true)}
+                            className="bg-green-600 hover:bg-green-500 text-white px-3 py-2 rounded-sm text-xs font-bold tracking-widest uppercase flex items-center gap-2 shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:shadow-[0_0_30px_rgba(34,197,94,0.5)] transition-all border border-green-500/30"
+                            title="Import avec mapping personnalisé"
+                        >
+                            <FileSpreadsheet size={14} />
+                            Import
+                        </button>
+                    </div>
 
                     <button
                         onClick={() => setIsExportModalOpen(true)}
@@ -578,7 +600,22 @@ const Contacts = () => {
                             )}
                         </div>
                         <div className="h-4 w-px bg-gray-300 dark:bg-gray-800 mx-2"></div>
-                        <span className="text-xs font-mono text-gray-500">VUE: <span className="text-gray-900 dark:text-white">LISTE_MODE</span></span>
+                        <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 rounded-sm p-0.5">
+                            <button
+                                onClick={() => setViewMode('cards')}
+                                className={`p-1.5 rounded-sm transition-all ${viewMode === 'cards' ? 'bg-white dark:bg-gray-800 shadow text-red-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                                title="Vue Cartes"
+                            >
+                                <LayoutGrid size={14} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('table')}
+                                className={`p-1.5 rounded-sm transition-all ${viewMode === 'table' ? 'bg-white dark:bg-gray-800 shadow text-red-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+                                title="Vue Tableau"
+                            >
+                                <TableIcon size={14} />
+                            </button>
+                        </div>
                     </div>
                     <div className="flex items-center gap-2 text-xs font-mono text-gray-500">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
@@ -654,168 +691,289 @@ const Contacts = () => {
                     </div>
                 </div>
 
-                {/* Data Grid */}
-                <div className="space-y-3 pb-8">
-                    {/* Headers - Hidden on Mobile */}
-                    <div className="hidden md:grid grid-cols-12 px-6 py-2 text-[10px] uppercase tracking-widest text-gray-500 font-mono border-b border-gray-200 dark:border-white/5 items-center">
-                        <div className="col-span-1 flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                checked={contacts.length > 0 && selectedContactIds.size === contacts.length}
-                                onChange={handleSelectAll}
-                                className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                            />
-                            {selectedContactIds.size > 0 && (
-                                <button
-                                    onClick={handleBulkDelete}
-                                    className="text-red-500 hover:text-red-700 transition-colors"
-                                    title="Supprimer la sélection"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
-                            )}
+                {/* Data Display - Cards or Table View */}
+                {viewMode === 'cards' ? (
+                    /* Cards View */
+                    <div className="space-y-3 pb-8">
+                        {/* Headers - Hidden on Mobile */}
+                        <div className="hidden md:grid grid-cols-12 px-6 py-2 text-[10px] uppercase tracking-widest text-gray-500 font-mono border-b border-gray-200 dark:border-white/5 items-center">
+                            <div className="col-span-1 flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={contacts.length > 0 && selectedContactIds.size === contacts.length}
+                                    onChange={handleSelectAll}
+                                    className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                />
+                                {selectedContactIds.size > 0 && (
+                                    <button
+                                        onClick={handleBulkDelete}
+                                        className="text-red-500 hover:text-red-700 transition-colors"
+                                        title="Supprimer la sélection"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="col-span-3">Entité Cible</div>
+                            <div className="col-span-3">Info Contact</div>
+                            <div className="col-span-2">Pipeline Vente</div>
+                            <div className="col-span-2">Statut</div>
+                            <div className="col-span-1 text-right">Actions</div>
                         </div>
-                        <div className="col-span-3">Entité Cible</div>
-                        <div className="col-span-3">Info Contact</div>
-                        <div className="col-span-2">Pipeline Vente</div>
-                        <div className="col-span-2">Statut</div>
-                        <div className="col-span-1 text-right">Actions</div>
-                    </div>
 
-                    {/* Rows */}
-                    {loading ? (
-                        <div className="text-center py-12 text-gray-500 font-mono animate-pulse">CHARGEMENT_DONNÉES...</div>
-                    ) : contacts.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500 font-mono">AUCUNE_DONNÉE_TROUVÉE</div>
-                    ) : (
-                        contacts.map((contact) => {
-                            const mapping = STATUS_MAPPING[contact.status] || STATUS_MAPPING['NEW'];
-                            return (
-                                <div key={contact.id} className="group relative flex flex-col md:grid md:grid-cols-12 gap-4 md:gap-0 items-start md:items-center p-6 bg-white dark:bg-[#0E0E11]/40 border border-gray-200 dark:border-white/5 hover:border-red-500/30 rounded transition-all hover:bg-gray-50 dark:hover:bg-[#15151A]/80 hover:shadow-[0_0_30px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+                        {/* Rows */}
+                        {loading ? (
+                            <div className="text-center py-12 text-gray-500 font-mono animate-pulse">CHARGEMENT_DONNÉES...</div>
+                        ) : contacts.length === 0 ? (
+                            <div className="text-center py-12 text-gray-500 font-mono">AUCUNE_DONNÉE_TROUVÉE</div>
+                        ) : (
+                            contacts.map((contact) => {
+                                const mapping = STATUS_MAPPING[contact.status] || STATUS_MAPPING['NEW'];
+                                return (
+                                    <div key={contact.id} className="group relative flex flex-col md:grid md:grid-cols-12 gap-4 md:gap-0 items-start md:items-center p-6 bg-white dark:bg-[#0E0E11]/40 border border-gray-200 dark:border-white/5 hover:border-red-500/30 rounded transition-all hover:bg-gray-50 dark:hover:bg-[#15151A]/80 hover:shadow-[0_0_30px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-sm">
 
-                                    {/* Decoration Line on Left */}
-                                    <div className="absolute left-0 top-2 bottom-2 w-1 bg-gradient-to-b from-transparent via-gray-300 dark:via-gray-700 to-transparent group-hover:via-red-600 transition-all"></div>
+                                        {/* Decoration Line on Left */}
+                                        <div className="absolute left-0 top-2 bottom-2 w-1 bg-gradient-to-b from-transparent via-gray-300 dark:via-gray-700 to-transparent group-hover:via-red-600 transition-all"></div>
 
-                                    {/* Checkbox */}
-                                    <div className="w-full md:col-span-1 pl-2 md:pl-0 mb-2 md:mb-0">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedContactIds.has(contact.id)}
-                                            onChange={() => handleSelectContact(contact.id)}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                                        />
-                                    </div>
-
-                                    {/* Entity */}
-                                    <div className="w-full md:col-span-3 md:pr-4">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <h3 className="font-bold text-gray-900 dark:text-white text-sm tracking-wide">{contact.companyName}</h3>
-                                                <p className="font-mono text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-                                                    <LockIcon size={10} /> ID: {contact.siret ? contact.siret.substring(0, 14) : 'N/A'}
-                                                </p>
-                                            </div>
+                                        {/* Checkbox */}
+                                        <div className="w-full md:col-span-1 pl-2 md:pl-0 mb-2 md:mb-0">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedContactIds.has(contact.id)}
+                                                onChange={() => handleSelectContact(contact.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                            />
                                         </div>
-                                    </div>
 
-                                    {/* Contact */}
-                                    <div className="w-full md:col-span-3 md:pr-4 border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/10 group-hover:border-gray-300 dark:group-hover:border-white/30 group-hover:text-gray-900 dark:group-hover:text-white transition-all">
-                                                {contact.managerName ? contact.managerName.substring(0, 2).toUpperCase() : '?'}
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-700 dark:text-gray-300 group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors">{contact.managerName || 'Non Assigné'}</p>
-                                                <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-gray-500">
-                                                    <span className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white cursor-pointer">
-                                                        <Phone size={10} /> {contact.phoneFixed || contact.phoneMobile || 'N/A'}
-                                                    </span>
+                                        {/* Entity */}
+                                        <div className="w-full md:col-span-3 md:pr-4">
+                                            <div className="flex items-start justify-between">
+                                                <div>
+                                                    <h3 className="font-bold text-gray-900 dark:text-white text-sm tracking-wide">{contact.companyName}</h3>
+                                                    <p className="font-mono text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                                                        <LockIcon size={10} /> ID: {contact.siret ? contact.siret.substring(0, 14) : 'N/A'}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Pipeline Visual */}
-                                    <div className="w-full md:col-span-2 md:pr-6 border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
-                                        <div className="flex justify-between text-[9px] font-mono text-gray-500 mb-1 uppercase">
-                                            <span>Progression</span>
-                                            <span className="text-gray-900 dark:text-white">{mapping.score}%</span>
+                                        {/* Contact */}
+                                        <div className="w-full md:col-span-3 md:pr-4 border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/10 group-hover:border-gray-300 dark:group-hover:border-white/30 group-hover:text-gray-900 dark:group-hover:text-white transition-all">
+                                                    {contact.managerName ? contact.managerName.substring(0, 2).toUpperCase() : '?'}
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-700 dark:text-gray-300 group-hover:text-red-500 dark:group-hover:text-red-400 transition-colors">{contact.managerName || 'Non Assigné'}</p>
+                                                    <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-gray-500">
+                                                        <span className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white cursor-pointer">
+                                                            <Phone size={10} /> {contact.phoneFixed || contact.phoneMobile || 'N/A'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <PipelineBar step={mapping.step} />
-                                    </div>
 
-                                    {/* Status */}
-                                    <div className="w-full md:col-span-2 border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
-                                        <select
-                                            value={contact.status}
-                                            onChange={(e) => handleStatusChange(contact.id, e.target.value)}
-                                            className={`
-                                                px-2 py-1 rounded border backdrop-blur-md font-mono text-[10px] uppercase tracking-wider w-full outline-none cursor-pointer appearance-none
-                                                ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].bg}
-                                                ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].border}
-                                                ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].color}
-                                                shadow-sm dark:shadow-[0_0_10px_rgba(0,0,0,0.5)]
-                                            `}
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <option value="NEW" className="bg-white dark:bg-[#0E0E11] text-blue-600 dark:text-blue-400">Nouveau</option>
-                                            <option value="NRP" className="bg-white dark:bg-[#0E0E11] text-orange-600 dark:text-orange-400">NRP</option>
-                                            <option value="UNREACHABLE" className="bg-white dark:bg-[#0E0E11] text-orange-600 dark:text-orange-400">Injoignable</option>
-                                            <option value="ANSWERING_MACHINE" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Répondeur</option>
-                                            <option value="ABSENT" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Absent</option>
-                                            <option value="CALLBACK_LATER" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Rappeler</option>
-                                            <option value="FOLLOW_UP" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Relance</option>
-                                            <option value="APPOINTMENT_TAKEN" className="bg-white dark:bg-[#0E0E11] text-emerald-600 dark:text-emerald-400">RDV Pris</option>
-                                            <option value="NOT_INTERESTED" className="bg-white dark:bg-[#0E0E11] text-red-600 dark:text-red-400">Pas intéressé</option>
-                                            <option value="OUT_OF_TARGET" className="bg-white dark:bg-[#0E0E11] text-red-600 dark:text-red-400">Hors cible</option>
-                                            <option value="ALREADY_CLIENT" className="bg-white dark:bg-[#0E0E11] text-emerald-600 dark:text-emerald-400">Client</option>
-                                            <option value="WRONG_NUMBER" className="bg-white dark:bg-[#0E0E11] text-red-600 dark:text-red-400">Faux num</option>
-                                        </select>
-                                        <p className="mt-2 text-[9px] font-mono text-gray-600">
-                                            {['APPOINTMENT_TAKEN', 'CALLBACK_LATER', 'FOLLOW_UP'].includes(contact.status) && contact.nextCallDate && !isNaN(new Date(contact.nextCallDate).getTime()) ? (
-                                                <span className="text-blue-500 dark:text-blue-400 font-bold">
-                                                    PRÉVU: {new Date(contact.nextCallDate).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                            ) : (
-                                                `MAJ: ${contact.updatedAt && !isNaN(new Date(contact.updatedAt).getTime()) ? new Date(contact.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'PENDING'}`
-                                            )}
-                                        </p>
-                                    </div>
+                                        {/* Pipeline Visual */}
+                                        <div className="w-full md:col-span-2 md:pr-6 border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
+                                            <div className="flex justify-between text-[9px] font-mono text-gray-500 mb-1 uppercase">
+                                                <span>Progression</span>
+                                                <span className="text-gray-900 dark:text-white">{mapping.score}%</span>
+                                            </div>
+                                            <PipelineBar step={mapping.step} />
+                                        </div>
 
-                                    {/* Actions */}
-                                    <div className="w-full md:col-span-1 flex justify-start md:justify-end gap-2 opacity-100 md:opacity-60 group-hover:opacity-100 transition-opacity border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
-                                        {(contact.phoneFixed || contact.phoneMobile) && (
-                                            <a
-                                                href={`tel:${contact.phoneFixed || contact.phoneMobile}`}
-                                                className="p-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:border-green-500/50 rounded hover:shadow-[0_0_10px_rgba(34,197,94,0.2)] transition-all flex-1 md:flex-none flex justify-center"
-                                                title="Appeler"
+                                        {/* Status */}
+                                        <div className="w-full md:col-span-2 border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
+                                            <select
+                                                value={contact.status}
+                                                onChange={(e) => handleStatusChange(contact.id, e.target.value)}
+                                                className={`
+                                                    px-2 py-1 rounded border backdrop-blur-md font-mono text-[10px] uppercase tracking-wider w-full outline-none cursor-pointer appearance-none
+                                                    ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].bg}
+                                                    ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].border}
+                                                    ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].color}
+                                                    shadow-sm dark:shadow-[0_0_10px_rgba(0,0,0,0.5)]
+                                                `}
                                                 onClick={(e) => e.stopPropagation()}
                                             >
-                                                <PhoneCall size={16} />
-                                            </a>
-                                        )}
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`); }}
-                                            className="p-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500/50 rounded hover:shadow-[0_0_10px_rgba(59,130,246,0.2)] transition-all flex-1 md:flex-none flex justify-center"
-                                            title="Détails"
-                                        >
-                                            <Target size={16} />
-                                        </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleEditContact(contact); }}
-                                            className="p-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-400 dark:hover:border-white/50 rounded transition-all flex-1 md:flex-none flex justify-center"
-                                            title="Modifier"
-                                        >
-                                            <Edit size={16} />
-                                        </button>
-                                    </div>
+                                                <option value="NEW" className="bg-white dark:bg-[#0E0E11] text-blue-600 dark:text-blue-400">Nouveau</option>
+                                                <option value="NRP" className="bg-white dark:bg-[#0E0E11] text-orange-600 dark:text-orange-400">NRP</option>
+                                                <option value="UNREACHABLE" className="bg-white dark:bg-[#0E0E11] text-orange-600 dark:text-orange-400">Injoignable</option>
+                                                <option value="ANSWERING_MACHINE" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Répondeur</option>
+                                                <option value="ABSENT" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Absent</option>
+                                                <option value="CALLBACK_LATER" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Rappeler</option>
+                                                <option value="FOLLOW_UP" className="bg-white dark:bg-[#0E0E11] text-purple-600 dark:text-purple-400">Relance</option>
+                                                <option value="APPOINTMENT_TAKEN" className="bg-white dark:bg-[#0E0E11] text-emerald-600 dark:text-emerald-400">RDV Pris</option>
+                                                <option value="NOT_INTERESTED" className="bg-white dark:bg-[#0E0E11] text-red-600 dark:text-red-400">Pas intéressé</option>
+                                                <option value="OUT_OF_TARGET" className="bg-white dark:bg-[#0E0E11] text-red-600 dark:text-red-400">Hors cible</option>
+                                                <option value="ALREADY_CLIENT" className="bg-white dark:bg-[#0E0E11] text-emerald-600 dark:text-emerald-400">Client</option>
+                                                <option value="WRONG_NUMBER" className="bg-white dark:bg-[#0E0E11] text-red-600 dark:text-red-400">Faux num</option>
+                                            </select>
+                                            <p className="mt-2 text-[9px] font-mono text-gray-600">
+                                                {['APPOINTMENT_TAKEN', 'CALLBACK_LATER', 'FOLLOW_UP'].includes(contact.status) && contact.nextCallDate && !isNaN(new Date(contact.nextCallDate).getTime()) ? (
+                                                    <span className="text-blue-500 dark:text-blue-400 font-bold">
+                                                        PRÉVU: {new Date(contact.nextCallDate).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                ) : (
+                                                    `MAJ: ${contact.updatedAt && !isNaN(new Date(contact.updatedAt).getTime()) ? new Date(contact.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'PENDING'}`
+                                                )}
+                                            </p>
+                                        </div>
 
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
+                                        {/* Actions */}
+                                        <div className="w-full md:col-span-1 flex justify-start md:justify-end gap-2 opacity-100 md:opacity-60 group-hover:opacity-100 transition-opacity border-t md:border-t-0 border-gray-100 dark:border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
+                                            {(contact.phoneFixed || contact.phoneMobile) && (
+                                                <a
+                                                    href={`tel:${contact.phoneFixed || contact.phoneMobile}`}
+                                                    className="p-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:border-green-500/50 rounded hover:shadow-[0_0_10px_rgba(34,197,94,0.2)] transition-all flex-1 md:flex-none flex justify-center"
+                                                    title="Appeler"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <PhoneCall size={16} />
+                                                </a>
+                                            )}
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`); }}
+                                                className="p-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500/50 rounded hover:shadow-[0_0_10px_rgba(59,130,246,0.2)] transition-all flex-1 md:flex-none flex justify-center"
+                                                title="Détails"
+                                            >
+                                                <Target size={16} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleEditContact(contact); }}
+                                                className="p-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:border-gray-400 dark:hover:border-white/50 rounded transition-all flex-1 md:flex-none flex justify-center"
+                                                title="Modifier"
+                                            >
+                                                <Edit size={16} />
+                                            </button>
+                                        </div>
+
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                ) : (
+                    /* Table View - Detailed columns */
+                    <div className="pb-8 overflow-hidden">
+                        <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-max">
+                                    <thead className="bg-gray-50 dark:bg-white/5 sticky top-0">
+                                        <tr>
+                                            <th className="px-2 py-3 text-left w-10">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={contacts.length > 0 && selectedContactIds.size === contacts.length}
+                                                    onChange={handleSelectAll}
+                                                    className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                                />
+                                            </th>
+                                            {TABLE_COLUMNS.map((col) => (
+                                                <th
+                                                    key={col.key}
+                                                    className="px-2 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                                                    style={{ minWidth: col.width }}
+                                                >
+                                                    {col.header}
+                                                </th>
+                                            ))}
+                                            <th className="px-2 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-20">
+                                                Statut
+                                            </th>
+                                            <th className="px-2 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan={TABLE_COLUMNS.length + 3} className="text-center py-12 text-gray-500 font-mono animate-pulse">
+                                                    CHARGEMENT_DONNÉES...
+                                                </td>
+                                            </tr>
+                                        ) : contacts.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={TABLE_COLUMNS.length + 3} className="text-center py-12 text-gray-500 font-mono">
+                                                    AUCUNE_DONNÉE_TROUVÉE
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            contacts.map((contact) => (
+                                                <tr
+                                                    key={contact.id}
+                                                    className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                                    onClick={() => navigate(`/contacts/${contact.id}`)}
+                                                >
+                                                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedContactIds.has(contact.id)}
+                                                            onChange={() => handleSelectContact(contact.id)}
+                                                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                                                        />
+                                                    </td>
+                                                    {TABLE_COLUMNS.map((col) => (
+                                                        <td
+                                                            key={col.key}
+                                                            className="px-2 py-2 text-xs text-gray-700 dark:text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis"
+                                                            style={{ maxWidth: col.width }}
+                                                            title={formatValue(col.key, (contact as any)[col.key])}
+                                                        >
+                                                            {formatValue(col.key, (contact as any)[col.key])}
+                                                        </td>
+                                                    ))}
+                                                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                                                        <span className={`inline-block px-2 py-1 rounded text-[10px] font-bold uppercase ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].bg} ${STATUS_CONFIG[STATUS_MAPPING[contact.status]?.configKey || 'Nouveau'].color}`}>
+                                                            {STATUS_MAPPING[contact.status]?.text || contact.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            {(contact.phoneFixed || contact.phoneMobile) && (
+                                                                <a
+                                                                    href={`tel:${contact.phoneFixed || contact.phoneMobile}`}
+                                                                    className="p-1.5 text-gray-400 hover:text-green-500 transition-colors"
+                                                                    title="Appeler"
+                                                                >
+                                                                    <PhoneCall size={14} />
+                                                                </a>
+                                                            )}
+                                                            <button
+                                                                onClick={() => handleEditContact(contact)}
+                                                                className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors"
+                                                                title="Modifier"
+                                                            >
+                                                                <Edit size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {selectedContactIds.size > 0 && (
+                            <div className="mt-3 flex items-center gap-3 px-4 py-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg">
+                                <span className="text-sm text-red-600 dark:text-red-400 font-medium">
+                                    {selectedContactIds.size} contact(s) sélectionné(s)
+                                </span>
+                                <button
+                                    onClick={handleBulkDelete}
+                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded flex items-center gap-1"
+                                >
+                                    <Trash2 size={12} />
+                                    Supprimer
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Pagination Controls */}
                 {totalCount > 0 && (
@@ -960,6 +1118,16 @@ const Contacts = () => {
                 contactId={selectedContactForCallback?.id}
                 contactName={selectedContactForCallback?.companyName}
                 newStatus={callbackStatus}
+            />
+
+            <ImportMappingModal
+                isOpen={isImportMappingModalOpen}
+                onClose={() => setIsImportMappingModalOpen(false)}
+                onSuccess={() => {
+                    fetchContacts();
+                    setIsImportMappingModalOpen(false);
+                }}
+                campaignId={selectedCampaignId}
             />
         </div >
     );

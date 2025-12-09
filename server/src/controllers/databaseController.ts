@@ -13,12 +13,15 @@ export const getDatabases = async (req: Request, res: Response) => {
                     select: { name: true }
                 },
                 contacts: {
-                    select: { status: true }
+                    select: { status: true, campaignId: true }
+                },
+                assignedUsers: {
+                    select: { id: true, name: true, role: true }
                 }
             }
         });
 
-        const databases = imports.map(imp => {
+        const databases = await Promise.all(imports.map(async imp => {
             const total = imp.contacts.length;
             const impAny = imp as any;
 
@@ -31,11 +34,27 @@ export const getDatabases = async (req: Request, res: Response) => {
             let argumentedCount = 0;
             let positiveCount = 0;
 
+            // Try to get campaignId from first contact
+            let campaignId: string | null = null;
+            let campaignName: string | null = null;
+
             imp.contacts.forEach(c => {
                 if (exploitableStatuses.includes(c.status)) exploitableCount++;
                 if (argumentedStatuses.includes(c.status)) argumentedCount++;
                 if (positiveStatuses.includes(c.status)) positiveCount++;
+                if (!campaignId && c.campaignId) {
+                    campaignId = c.campaignId;
+                }
             });
+
+            // Get campaign name if we have an ID
+            if (campaignId) {
+                const campaign = await prisma.campaign.findUnique({
+                    where: { id: campaignId },
+                    select: { name: true }
+                });
+                campaignName = campaign?.name || null;
+            }
 
             return {
                 id: imp.id,
@@ -45,6 +64,9 @@ export const getDatabases = async (req: Request, res: Response) => {
                 isActive: imp.isActive,
                 importerName: imp.user.name,
                 totalContacts: total,
+                campaignId,
+                campaignName,
+                assignedUsers: imp.assignedUsers,
                 // Configuration du recyclage
                 recycleEnabled: impAny.recycleEnabled ?? true,
                 recycleNRP: impAny.recycleNRP ?? true,
@@ -63,7 +85,7 @@ export const getDatabases = async (req: Request, res: Response) => {
                     }
                 }
             };
-        });
+        }));
 
         res.json(databases);
     } catch (error) {
@@ -146,5 +168,36 @@ export const recycleDatabase = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error recycling database:', error);
         res.status(500).json({ error: 'Error recycling database' });
+    }
+};
+
+// Assign users to a database
+export const assignUsersToDatabase = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { userIds } = req.body;
+
+    try {
+        // Clear existing assignments and set new ones
+        const updatedDatabase = await prisma.importHistory.update({
+            where: { id },
+            data: {
+                assignedUsers: {
+                    set: userIds.map((userId: string) => ({ id: userId }))
+                }
+            },
+            include: {
+                assignedUsers: {
+                    select: { id: true, name: true, role: true }
+                }
+            }
+        });
+
+        res.json({
+            message: 'Users assigned successfully',
+            assignedUsers: updatedDatabase.assignedUsers
+        });
+    } catch (error) {
+        console.error('Error assigning users to database:', error);
+        res.status(500).json({ error: 'Error assigning users to database' });
     }
 };

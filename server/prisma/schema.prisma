@@ -27,6 +27,23 @@ enum ContactStatus {
   OUT_OF_TARGET
   ALREADY_CLIENT
   WRONG_NUMBER
+  // RGPD - Ne plus contacter
+  BLACKLISTED
+  REFUS_ARGU
+  // Hors cible détaillé
+  COMPETITOR
+  CLOSED
+}
+
+// Sous-qualifications pour OUT_OF_TARGET
+enum OutOfTargetReason {
+  PARTICULIER         // Particulier (pas une entreprise)
+  RETRAITE            // À la retraite
+  LIQUIDATION         // En liquidation
+  ARRET_ACTIVITE      // Arrêt de l'activité
+  GERE_PAR_SIEGE      // Géré par un siège
+  DEJA_DEMARCHEE      // Déjà démarchée récemment
+  AUTRES              // Autres
 }
 
 enum CallOutcome {
@@ -39,6 +56,10 @@ enum CallOutcome {
   REFUSAL
   WRONG_CONTACT
   OTHER
+  // RGPD
+  BLACKLISTED
+  REFUS_ARGU
+  OUT_OF_TARGET
 }
 
 enum AppointmentStatus {
@@ -246,6 +267,7 @@ model Contact {
 
   // Statut et Suivi
   status      ContactStatus @default(NEW)
+  subStatus   OutOfTargetReason?  // Sous-qualification pour OUT_OF_TARGET
   notes       String?       @db.Text
   
   createdAt   DateTime @default(now())
@@ -282,7 +304,7 @@ model Campaign {
 model Call {
   id          String      @id @default(uuid())
   contactId   String
-  contact     Contact     @relation(fields: [contactId], references: [id])
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
   userId      String
   user        User        @relation(fields: [userId], references: [id])
   
@@ -312,7 +334,7 @@ model Call {
 model Appointment {
   id           String            @id @default(uuid())
   contactId    String
-  contact      Contact           @relation(fields: [contactId], references: [id])
+  contact      Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
   
   commercialId String
   commercial   User              @relation("CommercialAppointments", fields: [commercialId], references: [id])
@@ -391,6 +413,28 @@ model AuditLog {
   
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
+}
+
+// --- Export Templates ---
+model ExportTemplate {
+  id          String   @id @default(uuid())
+  name        String   // Template name (e.g., "Export complet", "Export simplifié")
+  description String?  // Optional description
+  
+  // Selected fields - stored as JSON array of field names
+  fields      String   @db.Text // JSON array: ["companyName", "phoneFixed", "status", ...]
+  
+  // Configuration options
+  includeHeader     Boolean @default(true)  // Include column headers
+  separator         String  @default(";")   // CSV separator
+  dateFormat        String  @default("dd/MM/yyyy HH:mm")
+  
+  // Visibility
+  isDefault   Boolean @default(false) // Is this a default/system template
+  isActive    Boolean @default(true)  // Can be used
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // --- Chat System Models ---

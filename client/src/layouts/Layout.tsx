@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LayoutDashboard, Phone, Users, Calendar, Settings, LogOut, Menu, Bell, Search, Target, Database, Monitor, Coffee, FileText, MessageCircle, Mic, Trophy } from 'lucide-react';
+import { LayoutDashboard, Phone, Users, Calendar, Settings, LogOut, Menu, Bell, Search, Target, Database, Monitor, Coffee, FileText, MessageCircle, Mic, Trophy, FileSpreadsheet } from 'lucide-react';
 import clsx from 'clsx';
 import NotificationCenter from '../components/NotificationCenter';
 import ThemeToggle from '../components/ThemeToggle';
@@ -159,6 +159,7 @@ const Layout = () => {
                                 <SidebarItem icon={Users} label="UTILISATEURS" to="/admin" />
                                 <SidebarItem icon={Target} label="CAMPAGNES" to="/admin/campaigns" />
                                 <SidebarItem icon={Database} label="BASES DE DONNÉES" to="/admin/databases" />
+                                <SidebarItem icon={FileSpreadsheet} label="MODÈLES EXPORT" to="/admin/export-templates" />
                                 <SidebarItem icon={FileText} label="EXPORT GRH" to="/admin/grh" />
                                 <SidebarItem icon={MessageCircle} label="HISTORIQUE CHAT" to="/admin/chat-history" />
                                 <SidebarItem icon={FileText} label="AUDIT LOGS" to="/admin/audit" />

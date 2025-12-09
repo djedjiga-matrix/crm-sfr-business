@@ -244,19 +244,14 @@ const handleCallEnded = async (data: any, io: any) => {
             }
         });
 
+        // ⚠️ NE PAS créer de contact automatiquement
+        // Les autres équipes Aircall peuvent générer des appels vers des numéros non présents dans le CRM
         if (!contactRecord) {
-            console.log(`   ⚠️ Contact non trouvé pour: ${raw_digits}. Création nouveau contact.`);
-            contactRecord = await prisma.contact.create({
-                data: {
-                    phoneFixed: raw_digits.replace(/[\s\-\.\(\)]/g, ''), // Stockage normalisé
-                    companyName: `Nouveau Contact (${raw_digits})`,
-                    status: 'NEW',
-                    notes: 'Créé automatiquement via appel Aircall',
-                }
-            });
-        } else {
-            console.log(`   ✅ Contact trouvé: ${contactRecord.companyName} (${contactRecord.id})`);
+            console.log(`   ⏭️ Contact non trouvé pour: ${raw_digits}. Appel ignoré (pas de création automatique).`);
+            return; // Ignorer cet appel
         }
+
+        console.log(`   ✅ Contact trouvé: ${contactRecord.companyName} (${contactRecord.id})`);
 
         // 2. Find Agent - IMPORTANT: Seuls les appels des agents existants dans le CRM sont importés
         let agent = null;

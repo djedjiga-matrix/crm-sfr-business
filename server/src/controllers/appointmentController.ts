@@ -123,12 +123,15 @@ export const getAppointments = async (req: AuthRequest, res: Response) => {
                     select: {
                         companyName: true,
                         address: true,
+                        zipCode: true,
                         city: true,
                         phoneFixed: true,
                         phoneMobile: true,
                         civility: true,
                         managerName: true,
-                        managerRole: true
+                        managerRole: true,
+                        email: true,
+                        sector: true
                     }
                 },
                 commercial: {

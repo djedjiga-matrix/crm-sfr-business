@@ -14,7 +14,7 @@ import Chat from './pages/Chat';
 
 import AdminUsers from './pages/AdminUsers';
 import AdminCampaigns from './pages/AdminCampaigns';
-import Databases from './pages/Databases';
+import AdminDatabases from './pages/AdminDatabases';
 import Calls from './pages/Calls';
 import PreviewMode from './pages/PreviewMode';
 import Monitoring from './pages/Monitoring';
@@ -25,6 +25,7 @@ import Recordings from './pages/Recordings';
 import AuditLogs from './pages/AuditLogs';
 import Objectives from './pages/Objectives';
 import AdminSystem from './pages/AdminSystem';
+import ExportTemplates from './pages/ExportTemplates';
 
 function App() {
   return (
@@ -49,8 +50,9 @@ function App() {
                       <Route path="admin" element={<AdminUsers />} />
                       <Route path="admin/campaigns" element={<AdminCampaigns />} />
                       <Route path="preview" element={<PreviewMode />} />
-                      <Route path="admin/databases" element={<Databases />} />
+                      <Route path="admin/databases" element={<AdminDatabases />} />
                       <Route path="admin/grh" element={<ExportGRH />} />
+                      <Route path="admin/export-templates" element={<ExportTemplates />} />
                       <Route path="admin/chat-history" element={<AdminChatHistory />} />
                       <Route path="admin/audit" element={<AuditLogs />} />
                       <Route path="admin/system" element={<AdminSystem />} />

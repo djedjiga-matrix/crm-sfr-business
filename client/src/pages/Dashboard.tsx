@@ -3,9 +3,15 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { Phone, Calendar, Users, TrendingUp, ArrowUpRight, ArrowDownRight, MoreHorizontal } from 'lucide-react';
+import { Phone, Calendar, Users, TrendingUp, ArrowUpRight, ArrowDownRight, MoreHorizontal, User } from 'lucide-react';
 import api from '../services/api';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, format } from 'date-fns';
+
+interface Agent {
+    id: string;
+    name: string;
+    role: string;
+}
 
 const StatCard = ({ title, value, icon: Icon, color, trend }: { title: string, value: string | number, icon: any, color: string, trend?: number }) => {
     const colorClasses: any = {
@@ -67,17 +73,36 @@ const Dashboard = () => {
         start: startOfDay(new Date()),
         end: endOfDay(new Date())
     });
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+
+    // Fetch agents list on mount
+    useEffect(() => {
+        const fetchAgents = async () => {
+            try {
+                const res = await api.get('/users');
+                setAgents(res.data.filter((u: Agent) => u.role === 'AGENT' || u.role === 'SUPERVISEUR'));
+            } catch (error) {
+                console.error('Error fetching agents:', error);
+            }
+        };
+        if (user?.role === 'ADMIN' || user?.role === 'SUPERVISEUR') {
+            fetchAgents();
+        }
+    }, [user?.role]);
 
     useEffect(() => {
         const fetchStats = async () => {
             setLoading(true);
             try {
-                const response = await api.get('/stats', {
-                    params: {
-                        startDate: dateRange.start.toISOString(),
-                        endDate: dateRange.end.toISOString()
-                    }
-                });
+                const params: any = {
+                    startDate: dateRange.start.toISOString(),
+                    endDate: dateRange.end.toISOString()
+                };
+                if (selectedAgentId) {
+                    params.agentId = selectedAgentId;
+                }
+                const response = await api.get('/stats', { params });
                 setStats(response.data);
             } catch (error) {
                 console.error('Error fetching stats:', error);
@@ -87,7 +112,7 @@ const Dashboard = () => {
         };
 
         fetchStats();
-    }, [dateRange]);
+    }, [dateRange, selectedAgentId]);
 
     const handlePeriodChange = (e: ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
@@ -118,6 +143,25 @@ const Dashboard = () => {
                     <p className="text-gray-500 text-sm font-mono mt-1">ÉTAT_SYSTÈME: <span className="text-green-500 dark:text-green-400">EN LIGNE</span></p>
                 </div>
                 <div className="flex gap-2 items-center">
+                    {/* Agent Filter - only for Admin/Superviseur */}
+                    {(user?.role === 'ADMIN' || user?.role === 'SUPERVISEUR') && agents.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <User size={14} className="text-gray-400" />
+                            <select
+                                value={selectedAgentId}
+                                onChange={(e) => setSelectedAgentId(e.target.value)}
+                                className="bg-white dark:bg-[#0E0E11] border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 text-xs font-mono rounded-lg focus:ring-red-500/50 focus:border-red-500/50 block p-2.5 outline-none transition-colors min-w-[150px]"
+                            >
+                                <option value="">Tous les agents</option>
+                                {agents.map(agent => (
+                                    <option key={agent.id} value={agent.id}>
+                                        {agent.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     {period === 'custom' && (
                         <div className="flex gap-2 mr-2">
                             <input

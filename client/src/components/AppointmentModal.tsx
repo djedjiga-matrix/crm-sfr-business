@@ -515,13 +515,43 @@ const AppointmentModal = ({ isOpen, onClose, onSuccess, contactId, contactName, 
                                             </div>
                                         </div>
 
-                                        {/* Context & Notes */}
+                                        {/* Context & Notes - EDITABLE */}
                                         <div className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-6">
-                                            <h4 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
-                                                <FileText size={16} /> Notes & Contexte
-                                            </h4>
-                                            <div className="bg-gray-50 dark:bg-black/20 p-4 rounded-lg text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                                                {appointment?.notes || "Aucune note disponible."}
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h4 className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                                                    <FileText size={16} /> Notes & Contexte
+                                                </h4>
+                                                {notes !== (appointment?.notes || '') && (
+                                                    <span className="text-xs text-orange-500 font-medium animate-pulse">• Non sauvegardé</span>
+                                                )}
+                                            </div>
+                                            <textarea
+                                                value={notes}
+                                                onChange={e => setNotes(e.target.value)}
+                                                rows={5}
+                                                className="w-full p-4 bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none"
+                                                placeholder="Ajouter des notes sur ce rendez-vous (contexte, retours commercial, informations importantes...)"
+                                            />
+                                            <div className="flex items-center justify-between mt-3">
+                                                <p className="text-xs text-gray-400">
+                                                    Les notes sont visibles par tous les utilisateurs
+                                                </p>
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            await api.put(`/appointments/${appointmentId}`, { notes });
+                                                            setAppointment({ ...appointment, notes });
+                                                            onSuccess();
+                                                        } catch (err) {
+                                                            setError("Erreur lors de la sauvegarde des notes");
+                                                        }
+                                                    }}
+                                                    disabled={notes === (appointment?.notes || '')}
+                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
+                                                >
+                                                    <FileText size={14} />
+                                                    Sauvegarder les notes
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

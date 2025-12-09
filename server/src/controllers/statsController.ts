@@ -25,10 +25,25 @@ export const getStats = async (req: AuthRequest, res: Response) => {
             end = endOfDay(start);
         }
 
-        // Filtres utilisateur
-        const whereUser = req.user?.role === 'COMMERCIAL' ? { userId: req.user.userId } : {};
-        const whereCommercial = req.user?.role === 'COMMERCIAL' ? { commercialId: req.user.userId } : {};
-        const whereAgent = req.user?.role === 'AGENT' ? { agentId: req.user.userId } : {};
+        // Agent filter from query params (for admin/superviseur filtering)
+        const filterAgentId = req.query.agentId as string | undefined;
+
+        // Filtres utilisateur basés sur le rôle OU le filtre agent explicite
+        let whereUser: any = {};
+        let whereCommercial: any = {};
+        let whereAgent: any = {};
+
+        if (filterAgentId) {
+            // Si un filtre agent est spécifié, l'utiliser
+            whereUser = { userId: filterAgentId };
+            whereAgent = { agentId: filterAgentId };
+        } else if (req.user?.role === 'COMMERCIAL') {
+            whereUser = { userId: req.user.userId };
+            whereCommercial = { commercialId: req.user.userId };
+        } else if (req.user?.role === 'AGENT') {
+            whereUser = { userId: req.user.userId };
+            whereAgent = { agentId: req.user.userId };
+        }
 
         // 2. Récupérer les appels pour la période
         const calls = await prisma.call.findMany({
@@ -45,8 +60,8 @@ export const getStats = async (req: AuthRequest, res: Response) => {
         // 3. Récupérer les RDV pris (créés) pendant la période
         const appointments = await prisma.appointment.findMany({
             where: {
-                ...(req.user?.role === 'COMMERCIAL' ? { commercialId: req.user.userId } : {}),
-                ...(req.user?.role === 'AGENT' ? { agentId: req.user.userId } : {}),
+                ...whereCommercial,
+                ...whereAgent,
                 createdAt: {
                     gte: start,
                     lte: end
@@ -71,8 +86,8 @@ export const getStats = async (req: AuthRequest, res: Response) => {
         // RDV pris cette semaine (tous les RDV créés cette semaine)
         const weeklyAppointments = await prisma.appointment.findMany({
             where: {
-                ...(req.user?.role === 'COMMERCIAL' ? { commercialId: req.user.userId } : {}),
-                ...(req.user?.role === 'AGENT' ? { agentId: req.user.userId } : {}),
+                ...whereCommercial,
+                ...whereAgent,
                 createdAt: {
                     gte: weekStart,
                     lte: weekEnd

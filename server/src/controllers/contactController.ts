@@ -325,9 +325,15 @@ export const updateContact = async (req: AuthRequest, res: Response) => {
 export const deleteContact = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
+
+        // Supprimer les relations liées d'abord (en attendant la cascade SQL)
+        await prisma.call.deleteMany({ where: { contactId: id } });
+        await prisma.appointment.deleteMany({ where: { contactId: id } });
+
         await prisma.contact.delete({ where: { id } });
         res.status(204).send();
     } catch (error) {
+        console.error('Error deleting contact:', error);
         res.status(500).json({ message: 'Error deleting contact', error });
     }
 };
@@ -340,6 +346,14 @@ export const deleteContacts = async (req: AuthRequest, res: Response) => {
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ message: 'No IDs provided' });
         }
+
+        // Supprimer les relations liées d'abord (en attendant la cascade SQL)
+        await prisma.call.deleteMany({
+            where: { contactId: { in: ids } }
+        });
+        await prisma.appointment.deleteMany({
+            where: { contactId: { in: ids } }
+        });
 
         const result = await prisma.contact.deleteMany({
             where: {
@@ -389,15 +403,23 @@ export const getNextContact = async (req: AuthRequest, res: Response) => {
         const databaseIds = agent.assignments.map(a => a.databaseId).filter((id): id is string => !!id);
         const hasAssignments = campaignIds.length > 0;
 
+        // Statuts RGPD exclus du Preview Mode - ces contacts ne doivent plus être contactés
+        const excludedStatuses = ['BLACKLISTED', 'REFUS_ARGU'];
         let contact = null;
 
         // ===== PRIORITÉ 1: Rappels et Relances en retard (assignés à l'agent) =====
         // Ces contacts ont un nextCallDate dans le passé et sont en attente de rappel
+        // On vérifie aussi que la base est active
         contact = await prisma.contact.findFirst({
             where: {
                 assignedToId: userId,
                 status: { in: ['CALLBACK_LATER', 'FOLLOW_UP'] },
-                nextCallDate: { lte: now }
+                nextCallDate: { lte: now },
+                // Exclure les contacts des bases inactives
+                OR: [
+                    { importHistory: { isActive: true } },
+                    { importId: null } // Contacts sans base (créés manuellement)
+                ]
             },
             orderBy: { nextCallDate: 'asc' }, // Le plus urgent d'abord
             include: contactInclude
@@ -412,7 +434,12 @@ export const getNextContact = async (req: AuthRequest, res: Response) => {
         contact = await prisma.contact.findFirst({
             where: {
                 assignedToId: userId,
-                status: 'NEW'
+                status: 'NEW',
+                // Exclure les contacts des bases inactives
+                OR: [
+                    { importHistory: { isActive: true } },
+                    { importId: null } // Contacts sans base (créés manuellement)
+                ]
             },
             orderBy: { createdAt: 'asc' }, // FIFO
             include: contactInclude
@@ -452,11 +479,17 @@ export const getNextContact = async (req: AuthRequest, res: Response) => {
 
         // ===== PRIORITÉ 3B: FALLBACK - Admins ou agents sans assignments =====
         // Si l'agent est admin OU n'a pas d'assignments, chercher n'importe quel contact NEW non assigné
+        // On filtre aussi par base active
         if (isAdmin || !hasAssignments) {
             const fallbackNew = await prisma.contact.findFirst({
                 where: {
                     assignedToId: null,
-                    status: 'NEW'
+                    status: 'NEW',
+                    // Exclure les contacts des bases inactives
+                    OR: [
+                        { importHistory: { isActive: true } },
+                        { importId: null } // Contacts sans base (créés manuellement)
+                    ]
                 },
                 orderBy: { createdAt: 'asc' },
                 select: { id: true }
@@ -582,17 +615,16 @@ export const searchContactByUniqueId = async (req: AuthRequest, res: Response) =
 export const qualifyContact = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { outcome, notes, contactStatus, nextCallDate } = req.body;
+        const { outcome, notes, contactStatus, nextCallDate, subStatus } = req.body;
         const userId = req.user?.userId;
 
         if (!userId) {
             return res.status(401).json({ message: 'User not authenticated' });
         }
 
-        console.log(`[QUALIFY CONTACT] Contact ${id} - Outcome: ${outcome}, Status: ${contactStatus}`);
+        console.log(`[QUALIFY CONTACT] Contact ${id} - Outcome: ${outcome}, Status: ${contactStatus}, SubStatus: ${subStatus || 'N/A'}`);
 
         // Map frontend outcome to Prisma CallOutcome enum
-        // ContactStatus et CallOutcome ont des valeurs différentes
         let prismaOutcome: any = outcome;
 
         // Mappings pour les statuts qui n'existent pas dans CallOutcome
@@ -600,13 +632,16 @@ export const qualifyContact = async (req: AuthRequest, res: Response) => {
             case 'WRONG_NUMBER': prismaOutcome = 'WRONG_CONTACT'; break;
             case 'NRP': prismaOutcome = 'UNREACHABLE'; break;
             case 'ABSENT': prismaOutcome = 'UNREACHABLE'; break;
-            case 'OUT_OF_TARGET': prismaOutcome = 'NOT_INTERESTED'; break;
             case 'ALREADY_CLIENT': prismaOutcome = 'OTHER'; break;
             case 'FOLLOW_UP': prismaOutcome = 'CALLBACK_LATER'; break;
+            // Nouveaux statuts RGPD - ils existent maintenant dans CallOutcome
+            case 'BLACKLISTED': prismaOutcome = 'BLACKLISTED'; break;
+            case 'REFUS_ARGU': prismaOutcome = 'REFUS_ARGU'; break;
+            case 'OUT_OF_TARGET': prismaOutcome = 'OUT_OF_TARGET'; break;
         }
 
-        // Validate against enum (basic check, or let Prisma throw if invalid)
-        const validOutcomes = ['APPOINTMENT_TAKEN', 'UNREACHABLE', 'ANSWERING_MACHINE', 'CALLBACK_LATER', 'NOT_INTERESTED', 'BUSY', 'REFUSAL', 'WRONG_CONTACT', 'OTHER'];
+        // Validate against enum
+        const validOutcomes = ['APPOINTMENT_TAKEN', 'UNREACHABLE', 'ANSWERING_MACHINE', 'CALLBACK_LATER', 'NOT_INTERESTED', 'BUSY', 'REFUSAL', 'WRONG_CONTACT', 'OTHER', 'BLACKLISTED', 'REFUS_ARGU', 'OUT_OF_TARGET'];
         if (!validOutcomes.includes(prismaOutcome)) {
             prismaOutcome = 'OTHER';
         }
@@ -627,12 +662,11 @@ export const qualifyContact = async (req: AuthRequest, res: Response) => {
             data: {
                 contactId: id,
                 userId: userId,
-                // status: outcome, // Removed: field does not exist
                 outcome: prismaOutcome,
                 notes: notes,
                 duration: 0,
                 calledAt: new Date(),
-                direction: 'OUTBOUND', // Assumed
+                direction: 'OUTBOUND',
                 recordingStatus: 'NO_RECORDING'
             }
         });
@@ -643,10 +677,15 @@ export const qualifyContact = async (req: AuthRequest, res: Response) => {
             updatedAt: new Date()
         };
 
-        // Logic to update nextCallDate:
-        // If status requires a callback (CALLBACK_LATER, FOLLOW_UP) and we have a valid date, use it.
-        // If status DOES NOT require callback, we should FORCE CLEAR the nextCallDate (set to null) 
-        // to prevent old dates from triggering notifications.
+        // Ajouter le subStatus si applicable (pour OUT_OF_TARGET)
+        if (contactStatus === 'OUT_OF_TARGET' && subStatus) {
+            updateData.subStatus = subStatus;
+        } else if (contactStatus !== 'OUT_OF_TARGET') {
+            // Nettoyer le subStatus si on change vers un autre statut
+            updateData.subStatus = null;
+        }
+
+        // Logic to update nextCallDate
         const requiresCallback = ['CALLBACK_LATER', 'FOLLOW_UP'].includes(contactStatus);
 
         if (requiresCallback && validNextCallDate) {
@@ -654,15 +693,17 @@ export const qualifyContact = async (req: AuthRequest, res: Response) => {
         } else if (!requiresCallback) {
             updateData.nextCallDate = null;
         }
-        // If requiresCallback is true but no date provided, we leave it alone (or could enforce it?)
-        // Implicitly if frontend sends null, validNextCallDate is null, so we didn't enter the first branch.
-        // But if we are in 'CALLBACK_LATER' and user didn't send date, that's an issue? 
-        // Frontend validation should handle that. Using old date is acceptable if intention was just to update status.
-        // However, usually we want to clear if we move AWAY from callback.
 
         // Auto-assign for callbacks
         if (userId && (contactStatus === 'CALLBACK_LATER' || contactStatus === 'FOLLOW_UP')) {
             updateData.assignedToId = userId;
+        }
+
+        // Pour les contacts blacklistés, on les désassigne
+        if (contactStatus === 'BLACKLISTED' || contactStatus === 'REFUS_ARGU') {
+            updateData.assignedToId = null;
+            updateData.nextCallDate = null;
+            console.log(`[QUALIFY CONTACT] RGPD: Contact ${id} marked as ${contactStatus} - clearing assignments`);
         }
 
         const contact = await prisma.contact.update({

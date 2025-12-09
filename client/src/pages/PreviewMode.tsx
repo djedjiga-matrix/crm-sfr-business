@@ -38,6 +38,10 @@ interface Contact {
     managerRole?: string;
     nextCallDate?: string;
     notes?: string;
+    // Nouveaux champs de la base importée
+    sector?: string;        // Catégorie
+    workforce?: string;     // Effectif
+    creationDate?: string;  // Date Création Ent
     campaign?: {
         name: string;
         code?: string;
@@ -58,6 +62,26 @@ const PreviewMode = () => {
         fetchNextContact();
     }, []);
 
+    // Vérification périodique que le contact existe toujours (toutes les 30 secondes)
+    useEffect(() => {
+        if (!contact) return;
+
+        const checkContactExists = async () => {
+            try {
+                await api.get(`/contacts/${contact.id}`);
+            } catch (error: any) {
+                if (error.response?.status === 404) {
+                    console.log('[PREVIEW] Contact supprimé, passage au suivant...');
+                    fetchNextContact();
+                }
+            }
+        };
+
+        const interval = setInterval(checkContactExists, 30000);
+        return () => clearInterval(interval);
+    }, [contact?.id]);
+
+
     const fetchNextContact = async () => {
         setLoading(true);
         try {
@@ -67,8 +91,12 @@ const PreviewMode = () => {
             } else {
                 setContact(response.data);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error fetching next contact:', error);
+            // Si erreur 404, le contact a été supprimé - on remet à null
+            if (error.response?.status === 404) {
+                setContact(null);
+            }
         } finally {
             setLoading(false);
         }
@@ -87,6 +115,20 @@ const PreviewMode = () => {
             alert('Contact non trouvé');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Fonction pour mettre à jour un champ du contact avec gestion d'erreur
+    const updateContactField = async (field: string, value: any) => {
+        if (!contact) return;
+        try {
+            await api.put(`/contacts/${contact.id}`, { [field]: value });
+        } catch (error: any) {
+            console.error('Error updating contact:', error);
+            if (error.response?.status === 404) {
+                alert('Ce contact a été supprimé. Passage au suivant...');
+                fetchNextContact();
+            }
         }
     };
 
@@ -223,7 +265,7 @@ const PreviewMode = () => {
                                                 type="text"
                                                 value={contact.managerName || ''}
                                                 onChange={(e) => setContact({ ...contact, managerName: e.target.value })}
-                                                onBlur={() => api.put(`/contacts/${contact.id}`, { managerName: contact.managerName })}
+                                                onBlur={() => updateContactField('managerName', contact.managerName)}
                                                 className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-gray-900 dark:text-white font-medium transition-colors placeholder-gray-400 dark:placeholder-gray-600"
                                                 placeholder="Nom du responsable"
                                             />
@@ -231,7 +273,7 @@ const PreviewMode = () => {
                                                 type="text"
                                                 value={contact.managerRole || ''}
                                                 onChange={(e) => setContact({ ...contact, managerRole: e.target.value })}
-                                                onBlur={() => api.put(`/contacts/${contact.id}`, { managerRole: contact.managerRole })}
+                                                onBlur={() => updateContactField('managerRole', contact.managerRole)}
                                                 className="bg-gray-100 dark:bg-white/5 border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-xs px-2 py-0.5 rounded transition-colors placeholder-gray-400 dark:placeholder-gray-600 w-32 text-gray-700 dark:text-gray-300"
                                                 placeholder="Fonction"
                                             />
@@ -271,7 +313,7 @@ const PreviewMode = () => {
                                                     type="text"
                                                     value={contact.phoneFixed || ''}
                                                     onChange={(e) => setContact({ ...contact, phoneFixed: e.target.value })}
-                                                    onBlur={() => api.put(`/contacts/${contact.id}`, { phoneFixed: contact.phoneFixed })}
+                                                    onBlur={() => updateContactField('phoneFixed', contact.phoneFixed)}
                                                     className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-lg font-mono text-gray-900 dark:text-white w-full mr-2 transition-colors"
                                                 />
                                                 {contact.phoneFixed && (
@@ -288,7 +330,7 @@ const PreviewMode = () => {
                                                     type="text"
                                                     value={contact.phoneMobile || ''}
                                                     onChange={(e) => setContact({ ...contact, phoneMobile: e.target.value })}
-                                                    onBlur={() => api.put(`/contacts/${contact.id}`, { phoneMobile: contact.phoneMobile })}
+                                                    onBlur={() => updateContactField('phoneMobile', contact.phoneMobile)}
                                                     className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-lg font-mono text-gray-900 dark:text-white w-full mr-2 transition-colors"
                                                 />
                                                 {contact.phoneMobile && (
@@ -305,7 +347,7 @@ const PreviewMode = () => {
                                                     type="email"
                                                     value={contact.email || ''}
                                                     onChange={(e) => setContact({ ...contact, email: e.target.value })}
-                                                    onBlur={() => api.put(`/contacts/${contact.id}`, { email: contact.email })}
+                                                    onBlur={() => updateContactField('email', contact.email)}
                                                     className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-sm text-gray-900 dark:text-white w-full mr-2 transition-colors"
                                                 />
                                                 {contact.email && (
@@ -327,7 +369,7 @@ const PreviewMode = () => {
                                             type="text"
                                             value={contact.address || ''}
                                             onChange={(e) => setContact({ ...contact, address: e.target.value })}
-                                            onBlur={() => api.put(`/contacts/${contact.id}`, { address: contact.address })}
+                                            onBlur={() => updateContactField('address', contact.address)}
                                             className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-sm text-gray-900 dark:text-white w-full transition-colors"
                                             placeholder="Adresse"
                                         />
@@ -336,7 +378,7 @@ const PreviewMode = () => {
                                                 type="text"
                                                 value={contact.zipCode || ''}
                                                 onChange={(e) => setContact({ ...contact, zipCode: e.target.value })}
-                                                onBlur={() => api.put(`/contacts/${contact.id}`, { zipCode: contact.zipCode })}
+                                                onBlur={() => updateContactField('zipCode', contact.zipCode)}
                                                 className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-sm text-gray-900 dark:text-white w-full transition-colors"
                                                 placeholder="Code Postal"
                                             />
@@ -344,10 +386,45 @@ const PreviewMode = () => {
                                                 type="text"
                                                 value={contact.city || ''}
                                                 onChange={(e) => setContact({ ...contact, city: e.target.value })}
-                                                onBlur={() => api.put(`/contacts/${contact.id}`, { city: contact.city })}
+                                                onBlur={() => updateContactField('city', contact.city)}
                                                 className="bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-white/20 focus:border-red-500 outline-none text-sm text-gray-900 dark:text-white w-full transition-colors"
                                                 placeholder="Ville"
                                             />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Section: Informations Entreprise */}
+                                <div>
+                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                        <Briefcase size={14} /> Infos Entreprise
+                                    </h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-[10px] text-gray-500 dark:text-gray-600 font-mono block mb-1">SIRET</label>
+                                            <div className="text-xs font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-white/5 px-2 py-1.5 rounded border border-gray-200 dark:border-white/10 overflow-hidden text-ellipsis whitespace-nowrap" title={contact.siret || ''}>
+                                                {contact.siret ? contact.siret.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/, '$1 $2 $3 $4') : '-'}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[10px] text-gray-500 dark:text-gray-600 font-mono block mb-1">EFFECTIF</label>
+                                                <div className="text-sm text-gray-900 dark:text-white bg-gray-100 dark:bg-white/5 px-2 py-1 rounded border border-gray-200 dark:border-white/10">
+                                                    {contact.workforce || '-'}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-gray-500 dark:text-gray-600 font-mono block mb-1">DATE CRÉATION</label>
+                                                <div className="text-sm font-mono text-gray-900 dark:text-white bg-gray-100 dark:bg-white/5 px-2 py-1 rounded border border-gray-200 dark:border-white/10">
+                                                    {contact.creationDate ? new Date(contact.creationDate).toLocaleDateString('fr-FR') : '-'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-500 dark:text-gray-600 font-mono block mb-1">CATÉGORIE / SECTEUR</label>
+                                            <div className="text-sm text-gray-900 dark:text-white bg-gray-100 dark:bg-white/5 px-2 py-1 rounded border border-gray-200 dark:border-white/10 overflow-hidden text-ellipsis" title={contact.sector || ''}>
+                                                {contact.sector || '-'}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -364,7 +441,7 @@ const PreviewMode = () => {
                                         <textarea
                                             value={contact.notes || ''}
                                             onChange={(e) => setContact({ ...contact, notes: e.target.value })}
-                                            onBlur={() => api.put(`/contacts/${contact.id}`, { notes: contact.notes })}
+                                            onBlur={() => updateContactField('notes', contact.notes)}
                                             className="flex-1 w-full bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 rounded-lg p-4 text-sm text-gray-800 dark:text-yellow-100 resize-none focus:ring-2 focus:ring-yellow-500/50 outline-none transition-all placeholder-yellow-800/30 dark:placeholder-yellow-100/30"
                                             placeholder="Notes sur l'appel..."
                                         />

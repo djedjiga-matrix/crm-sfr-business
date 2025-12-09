@@ -27,6 +27,7 @@ import recordingRoutes from './routes/recordingRoutes';
 import auditRoutes from './routes/auditRoutes';
 import calendarRoutes from './routes/calendarRoutes';
 import scriptRoutes from './routes/scriptRoutes';
+import exportTemplateRoutes from './routes/exportTemplateRoutes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -132,6 +133,7 @@ app.use('/api/recordings', recordingRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/scripts', scriptRoutes);
+app.use('/api/export-templates', exportTemplateRoutes);
 
 // Page d'accueil
 app.get('/', (req, res) => {

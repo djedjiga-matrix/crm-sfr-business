@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createContact, getContacts, getContactById, updateContact, deleteContact, deleteContacts, getNotifications, getNextContact, searchContactByUniqueId, qualifyContact } from '../controllers/contactController';
-import { importContacts } from '../controllers/importController';
+import { importContacts, previewImport, importWithMapping } from '../controllers/importController';
 import { exportContacts } from '../controllers/exportController';
 import { authenticate } from '../middleware/authMiddleware';
 import { upload } from '../middleware/uploadMiddleware';
@@ -9,6 +9,9 @@ const router = Router();
 
 router.use(authenticate);
 
+// Import routes with mapping support
+router.post('/import/preview', upload.single('file'), previewImport);
+router.post('/import/mapped', upload.single('file'), importWithMapping);
 router.post('/import', upload.single('file'), importContacts);
 router.post('/', createContact);
 router.get('/', getContacts);

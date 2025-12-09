@@ -26,10 +26,13 @@ interface Appointment {
     contact: {
         companyName: string;
         managerName?: string;
+        address?: string;
+        zipCode?: string;
         city?: string;
         phoneFixed?: string;
         phoneMobile?: string;
-        address?: string;
+        email?: string;
+        sector?: string;
     };
     commercial: {
         name: string;
@@ -65,6 +68,23 @@ const EVENT_STYLES: Record<string, { bg: string, border: string, text: string, g
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 8);
 
+// Fonction pour construire l'adresse complète
+const formatFullAddress = (contact: Appointment['contact']): string => {
+    const parts: string[] = [];
+
+    if (contact.address) {
+        parts.push(contact.address);
+    }
+
+    // Code postal et ville sur la même ligne
+    const cpVille = [contact.zipCode, contact.city].filter(Boolean).join(' ');
+    if (cpVille) {
+        parts.push(cpVille);
+    }
+
+    return parts.join(', ') || 'À définir';
+};
+
 // --- Mobile Event Card ---
 const MobileEventCard = ({ event }: { event: FormattedEvent }) => {
     const style = EVENT_STYLES[event.type] || EVENT_STYLES['SCHEDULED'];
@@ -89,6 +109,13 @@ const MobileEventCard = ({ event }: { event: FormattedEvent }) => {
                     {event.location && (
                         <p className={`text-sm ${style.text} opacity-70 mt-1 flex items-center gap-1`}>
                             <MapPin size={12} /> {event.location}
+                        </p>
+                    )}
+                    {/* Afficher l'adresse complète si différente de location */}
+                    {event.address && event.address !== event.location && (
+                        <p className={`text-xs ${style.text} opacity-60 mt-1 flex items-start gap-1`}>
+                            <MapPin size={10} className="mt-0.5 flex-shrink-0" />
+                            <span className="break-words">{event.address}</span>
                         </p>
                     )}
                 </div>
@@ -116,7 +143,7 @@ const EventBlock = ({ event }: { event: FormattedEvent }) => {
         <div
             className={`absolute left-1 right-1 p-2 rounded border-l-[5px] backdrop-blur-md cursor-pointer hover:brightness-105 transition-all group z-10 ${style.bg} ${style.border} ${style.glow} ${style.opacity || ''}`}
             style={{ top: `${topPosition}px`, height: `${height}px`, minHeight: '40px' }}
-            title={`${event.title} - ${event.contact}`}
+            title={`${event.title}\n${event.contact}\n📍 ${event.address || event.location}`}
             onClick={event.onClick}
         >
             <div className="flex justify-between items-start">
@@ -249,6 +276,9 @@ const Calendar = () => {
                 const date = parseISO(appt.date);
                 const startHour = getHours(date) + getMinutes(date) / 60;
 
+                // Construire l'adresse complète
+                const fullAddress = formatFullAddress(appt.contact);
+
                 return {
                     id: appt.id,
                     title: appt.contact.companyName,
@@ -260,7 +290,7 @@ const Calendar = () => {
                     location: appt.contact.city || 'À définir',
                     originalDate: date,
                     phone: appt.contact.phoneFixed || appt.contact.phoneMobile,
-                    address: appt.contact.address,
+                    address: fullAddress,
                     onClick: () => {
                         setSelectedAppointmentId(appt.id);
                         setIsModalOpen(true);

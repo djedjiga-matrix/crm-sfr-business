@@ -64,13 +64,12 @@ export const getCalls = async (req: AuthRequest, res: Response) => {
 export const qualifyCall = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { outcome, notes, contactStatus, nextCallDate } = req.body;
+        const { outcome, notes, contactStatus, nextCallDate, subStatus } = req.body;
         const userId = req.user?.userId;
 
-        console.log(`[QUALIFY] Call ${id} - Outcome: ${outcome}, Status: ${contactStatus}`);
+        console.log(`[QUALIFY] Call ${id} - Outcome: ${outcome}, Status: ${contactStatus}, SubStatus: ${subStatus || 'N/A'}`);
 
         // Map frontend outcome to Prisma CallOutcome enum
-        // ContactStatus et CallOutcome ont des valeurs différentes
         let prismaOutcome: any = outcome;
 
         // Mappings pour les statuts qui n'existent pas dans CallOutcome
@@ -78,12 +77,15 @@ export const qualifyCall = async (req: AuthRequest, res: Response) => {
             case 'WRONG_NUMBER': prismaOutcome = 'WRONG_CONTACT'; break;
             case 'NRP': prismaOutcome = 'UNREACHABLE'; break;
             case 'ABSENT': prismaOutcome = 'UNREACHABLE'; break;
-            case 'OUT_OF_TARGET': prismaOutcome = 'NOT_INTERESTED'; break;
             case 'ALREADY_CLIENT': prismaOutcome = 'OTHER'; break;
             case 'FOLLOW_UP': prismaOutcome = 'CALLBACK_LATER'; break;
+            // Nouveaux statuts RGPD
+            case 'BLACKLISTED': prismaOutcome = 'BLACKLISTED'; break;
+            case 'REFUS_ARGU': prismaOutcome = 'REFUS_ARGU'; break;
+            case 'OUT_OF_TARGET': prismaOutcome = 'OUT_OF_TARGET'; break;
         }
 
-        const validOutcomes = ['APPOINTMENT_TAKEN', 'UNREACHABLE', 'ANSWERING_MACHINE', 'CALLBACK_LATER', 'NOT_INTERESTED', 'BUSY', 'REFUSAL', 'WRONG_CONTACT', 'OTHER'];
+        const validOutcomes = ['APPOINTMENT_TAKEN', 'UNREACHABLE', 'ANSWERING_MACHINE', 'CALLBACK_LATER', 'NOT_INTERESTED', 'BUSY', 'REFUSAL', 'WRONG_CONTACT', 'OTHER', 'BLACKLISTED', 'REFUS_ARGU', 'OUT_OF_TARGET'];
         if (!validOutcomes.includes(prismaOutcome)) {
             prismaOutcome = 'OTHER';
         }
@@ -105,7 +107,7 @@ export const qualifyCall = async (req: AuthRequest, res: Response) => {
             data: {
                 outcome: prismaOutcome,
                 notes,
-                recordingStatus: 'TREATED' // Will be confirmed by renamer
+                recordingStatus: 'TREATED'
             },
             include: { contact: true }
         });
@@ -113,15 +115,13 @@ export const qualifyCall = async (req: AuthRequest, res: Response) => {
         console.log(`[QUALIFY] ✅ Call ${id} updated - New outcome: ${call.outcome}, Status: TREATED`);
 
         // 1.5 PROPAGER l'outcome aux appels avec enregistrement non qualifiés
-        // Cela permet de synchroniser le statut des enregistrements avec la qualification du contact
         if (call.contactId) {
             const callsWithRecording = await prisma.call.findMany({
                 where: {
                     contactId: call.contactId,
-                    id: { not: id }, // Pas le même appel
+                    id: { not: id },
                     recordingPath: { not: null },
-                    outcome: 'OTHER' // Non encore qualifié
-                    // PAS de limite de temps - propager à TOUS les enregistrements non qualifiés
+                    outcome: 'OTHER'
                 }
             });
 
@@ -140,7 +140,6 @@ export const qualifyCall = async (req: AuthRequest, res: Response) => {
                     });
                     console.log(`[QUALIFY] 📋 Appel ${recCall.id} mis à jour avec outcome: ${prismaOutcome}`);
 
-                    // Renommer cet appel aussi
                     const { renameRecording } = require('../services/recordingRenamer');
                     await renameRecording(recCall.id);
                 }
@@ -154,6 +153,13 @@ export const qualifyCall = async (req: AuthRequest, res: Response) => {
                 updatedAt: new Date()
             };
 
+            // Ajouter le subStatus si applicable
+            if (contactStatus === 'OUT_OF_TARGET' && subStatus) {
+                updateData.subStatus = subStatus;
+            } else if (contactStatus !== 'OUT_OF_TARGET') {
+                updateData.subStatus = null;
+            }
+
             const requiresCallback = ['CALLBACK_LATER', 'FOLLOW_UP'].includes(contactStatus);
 
             if (requiresCallback && validNextCallDate) {
@@ -165,6 +171,13 @@ export const qualifyCall = async (req: AuthRequest, res: Response) => {
             // Auto-assign for callbacks
             if (userId && (contactStatus === 'CALLBACK_LATER' || contactStatus === 'FOLLOW_UP')) {
                 updateData.assignedToId = userId;
+            }
+
+            // Pour les contacts blacklistés, on les désassigne
+            if (contactStatus === 'BLACKLISTED' || contactStatus === 'REFUS_ARGU') {
+                updateData.assignedToId = null;
+                updateData.nextCallDate = null;
+                console.log(`[QUALIFY] RGPD: Contact ${call.contactId} marked as ${contactStatus} - clearing assignments`);
             }
 
             await prisma.contact.update({
